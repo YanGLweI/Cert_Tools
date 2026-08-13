@@ -49,12 +49,9 @@ function saveFullchain() {
 }
 
 function formatDate(dateStr: string): string {
-  try {
-    const d = new Date(dateStr);
-    return d.toLocaleString('zh-CN', { timeZone: 'UTC' });
-  } catch {
-    return dateStr;
-  }
+  // Format is "YYYY-MM-DD HH:MM:SS UTC" from Rust backend, already readable
+  if (!dateStr || dateStr === 'Invalid Date') return '-';
+  return dateStr;
 }
 </script>
 
