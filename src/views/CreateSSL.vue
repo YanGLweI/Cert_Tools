@@ -2,8 +2,10 @@
 import { ref, reactive, onMounted, onBeforeUnmount } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { readTextFile } from '@tauri-apps/plugin-fs';
+import { readTextFile as readFsFile } from '@tauri-apps/plugin-fs';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { ElMessage } from 'element-plus';
+import type { UnlistenFn } from '@tauri-apps/api/event';
 import CertInfoDisplay from '../components/CertInfoDisplay.vue';
 import SANEditor from '../components/SANEditor.vue';
 import type { SslParams, CertInfo, SanEntry } from '../types';
@@ -17,7 +19,7 @@ const caCertPem = ref('');
 const caKeyPem = ref('');
 const caInfo = ref<CertInfo | null>(null);
 
-// Drag state
+// Drag state for visual feedback
 const dragOverCert = ref(false);
 const dragOverKey = ref(false);
 
@@ -41,87 +43,76 @@ const formRules = {
 };
 
 const formRef = ref();
+let unlistenDragDrop: UnlistenFn | null = null;
 
-// Prevent browser from opening dropped files
-function preventGlobalDrop(e: DragEvent) {
-  e.preventDefault();
-}
+onMounted(async () => {
+  // Listen for Tauri native drag-drop events
+  unlistenDragDrop = await getCurrentWindow().onDragDropEvent((event) => {
+    const type = event.payload.type;
 
-onMounted(() => {
-  document.addEventListener('dragover', preventGlobalDrop);
-  document.addEventListener('drop', preventGlobalDrop);
+    if (type === 'over') {
+      const pos = event.payload.position;
+      const zoneWidth = (window.innerWidth - 240 - 48) / 2;
+      const relativeX = pos.x - 240 - 24;
+      dragOverCert.value = relativeX < zoneWidth;
+      dragOverKey.value = relativeX >= zoneWidth;
+    } else if (type === 'leave') {
+      dragOverCert.value = false;
+      dragOverKey.value = false;
+    } else if (type === 'enter' || type === 'drop') {
+      dragOverCert.value = false;
+      dragOverKey.value = false;
+
+      const filePath = event.payload.paths?.[0];
+      if (!filePath) return;
+
+      const lower = filePath.toLowerCase();
+      const isCert = lower.endsWith('.crt') || lower.endsWith('.cer');
+      const isKey = lower.endsWith('.key');
+      const isPem = lower.endsWith('.pem');
+
+      if (!isCert && !isKey && !isPem) {
+        ElMessage.warning('请拖入证书文件 (.crt/.cer/.pem) 或私钥文件 (.key)');
+        return;
+      }
+
+      handleDroppedFile(filePath, isCert || isPem);
+    }
+  });
 });
 
 onBeforeUnmount(() => {
-  document.removeEventListener('dragover', preventGlobalDrop);
-  document.removeEventListener('drop', preventGlobalDrop);
+  unlistenDragDrop?.();
 });
 
-function isCertFile(name: string): boolean {
-  const lower = name.toLowerCase();
-  return lower.endsWith('.crt') || lower.endsWith('.pem') || lower.endsWith('.cer');
-}
-
-function isKeyFile(name: string): boolean {
-  const lower = name.toLowerCase();
-  return lower.endsWith('.key') || lower.endsWith('.pem');
-}
-
-function readDroppedFile(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsText(file);
-  });
-}
-
-async function handleDropCert(event: DragEvent) {
-  dragOverCert.value = false;
-  const file = event.dataTransfer?.files?.[0];
-  if (!file) return;
-
-  const name = file.name.toLowerCase();
-  if (!name.endsWith('.crt') && !name.endsWith('.pem') && !name.endsWith('.cer') && !name.endsWith('.key')) {
-    ElMessage.warning('请拖入证书或私钥文件 (.crt / .pem / .cer / .key)');
-    return;
-  }
-
+async function handleDroppedFile(filePath: string, preferCert: boolean) {
   try {
-    const content = await readDroppedFile(file);
-    const isCert = isCertFile(name) || (!isKeyFile(name) && content.includes('BEGIN CERTIFICATE'));
-    if (isCert) {
-      const info = await invoke<CertInfo>('parse_certificate', { certPem: content });
-      caCertPem.value = content;
-      caInfo.value = info;
-      ElMessage.success('CA 证书导入成功');
-    } else {
+    const content = await readFsFile(filePath);
+
+    // If it's .pem, try to detect type from content
+    const isCertContent = content.includes('BEGIN CERTIFICATE');
+    const isKeyContent = content.includes('BEGIN PRIVATE KEY') || content.includes('BEGIN RSA PRIVATE KEY');
+
+    if (preferCert && isCertContent) {
+      await importCertContent(content);
+    } else if (isKeyContent) {
       caKeyPem.value = content;
       ElMessage.success('CA 私钥导入成功');
+    } else if (isCertContent) {
+      await importCertContent(content);
+    } else {
+      ElMessage.warning('无法识别文件类型，请确认文件内容');
     }
   } catch (e) {
     ElMessage.error('文件读取失败: ' + String(e));
   }
 }
 
-async function handleDropKey(event: DragEvent) {
-  dragOverKey.value = false;
-  const file = event.dataTransfer?.files?.[0];
-  if (!file) return;
-
-  const name = file.name.toLowerCase();
-  if (!name.endsWith('.key') && !name.endsWith('.pem')) {
-    ElMessage.warning('请拖入私钥文件 (.key / .pem)');
-    return;
-  }
-
-  try {
-    const content = await readDroppedFile(file);
-    caKeyPem.value = content;
-    ElMessage.success('CA 私钥导入成功');
-  } catch (e) {
-    ElMessage.error('文件读取失败: ' + String(e));
-  }
+async function importCertContent(content: string) {
+  const info = await invoke<CertInfo>('parse_certificate', { certPem: content });
+  caCertPem.value = content;
+  caInfo.value = info;
+  ElMessage.success('CA 证书导入成功');
 }
 
 async function importCaCert() {
@@ -134,11 +125,8 @@ async function importCaCert() {
       ],
     });
     if (!selected) return;
-    const content = await readTextFile(selected as string);
-    const info = await invoke<CertInfo>('parse_certificate', { certPem: content });
-    caCertPem.value = content;
-    caInfo.value = info;
-    ElMessage.success('CA 证书导入成功');
+    const content = await readFsFile(selected as string);
+    await importCertContent(content);
   } catch (e) {
     ElMessage.error('CA 证书导入失败: ' + String(e));
   }
@@ -154,7 +142,7 @@ async function importCaKey() {
       ],
     });
     if (!selected) return;
-    const content = await readTextFile(selected as string);
+    const content = await readFsFile(selected as string);
     caKeyPem.value = content;
     ElMessage.success('CA 私钥导入成功');
   } catch (e) {
@@ -193,7 +181,12 @@ function updateSan(san: SanEntry) {
   form.san = san;
 }
 
-function clearCa() {
+function clearCert() {
+  caCertPem.value = '';
+  caInfo.value = null;
+}
+
+function clearAll() {
   caCertPem.value = '';
   caKeyPem.value = '';
   caInfo.value = null;
@@ -206,48 +199,72 @@ function clearCa() {
     <div class="form-card">
       <div class="form-card-title">CA 证书导入</div>
 
-      <div v-if="!caInfo" class="upload-row">
+      <!-- Step 1: Import both cert and key (nothing imported yet) -->
+      <div v-if="!caInfo && !caKeyPem" class="upload-row">
         <div
           class="upload-zone"
           :class="{ 'drag-over': dragOverCert }"
           @click="importCaCert"
-          @dragover.prevent="dragOverCert = true"
-          @dragleave.prevent="dragOverCert = false"
-          @drop.prevent="handleDropCert"
         >
           <el-icon><UploadFilled /></el-icon>
-          <div class="text">点击或拖动 CA 证书文件到此处</div>
+          <div class="text">点击或拖动 CA 证书到此处</div>
           <div class="hint">支持 .crt / .pem / .cer 格式</div>
         </div>
         <div
           class="upload-zone"
           :class="{ 'drag-over': dragOverKey }"
           @click="importCaKey"
-          @dragover.prevent="dragOverKey = true"
-          @dragleave.prevent="dragOverKey = false"
-          @drop.prevent="handleDropKey"
         >
           <el-icon><Key /></el-icon>
-          <div class="text">点击或拖动 CA 私钥文件到此处</div>
+          <div class="text">点击或拖动 CA 私钥到此处</div>
           <div class="hint">支持 .key / .pem 格式</div>
         </div>
       </div>
 
-      <div v-else class="ca-ready">
-        <div class="status-badge success">
-          <span class="dot" />
-          CA 已就绪
-        </div>
-        <div class="ca-info-summary">
-          <div><strong>Subject:</strong> {{ caInfo.subject }}</div>
-          <div v-if="caKeyPem"><strong>Private Key:</strong> 已导入</div>
-        </div>
-        <div class="ca-ready-actions">
-          <el-button size="small" @click="clearCa">
-            <el-icon><Refresh /></el-icon>
-            重新导入
+      <!-- Step 2: Cert imported, key still needed -->
+      <div v-else-if="caInfo && !caKeyPem" class="import-status">
+        <div class="imported-item success">
+          <el-icon><CircleCheckFilled /></el-icon>
+          <div class="imported-info">
+            <div class="imported-label">CA 证书</div>
+            <div class="imported-detail">{{ caInfo.subject }}</div>
+          </div>
+          <el-button size="small" text @click="clearCert">
+            <el-icon><Close /></el-icon>
           </el-button>
         </div>
+
+        <div
+          class="upload-zone single"
+          :class="{ 'drag-over': dragOverKey }"
+          @click="importCaKey"
+        >
+          <el-icon><Key /></el-icon>
+          <div class="text">点击或拖动 CA 私钥到此处</div>
+          <div class="hint">需要与证书配对的私钥才能签发 SSL 证书</div>
+        </div>
+      </div>
+
+      <!-- Step 3: Both imported -->
+      <div v-else class="import-status">
+        <div class="imported-item success">
+          <el-icon><CircleCheckFilled /></el-icon>
+          <div class="imported-info">
+            <div class="imported-label">CA 证书</div>
+            <div class="imported-detail">{{ caInfo?.subject }}</div>
+          </div>
+        </div>
+        <div class="imported-item success">
+          <el-icon><CircleCheckFilled /></el-icon>
+          <div class="imported-info">
+            <div class="imported-label">CA 私钥</div>
+            <div class="imported-detail">已就绪</div>
+          </div>
+        </div>
+        <el-button size="small" @click="clearAll">
+          <el-icon><Refresh /></el-icon>
+          重新导入
+        </el-button>
       </div>
     </div>
 
@@ -347,24 +364,51 @@ function clearCa() {
   gap: 16px;
 }
 
-.ca-ready {
+.upload-zone.single {
+  margin-top: 12px;
+}
+
+.import-status {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.ca-ready-actions {
+.imported-item {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background-color: var(--color-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
 }
 
-.ca-info-summary {
-  font-size: 13px;
-  line-height: 1.8;
-  color: var(--color-foreground);
+.imported-item.success {
+  border-color: rgba(34, 197, 94, 0.3);
 }
 
-.ca-info-summary strong {
+.imported-item .el-icon:first-child {
+  font-size: 20px;
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.imported-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.imported-label {
+  font-size: 12px;
   color: #94A3B8;
+}
+
+.imported-detail {
+  font-size: 13px;
+  color: var(--color-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

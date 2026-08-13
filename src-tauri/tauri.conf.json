@@ -14,7 +14,8 @@
       {
         "title": "CertTools - 自签证书生成工具",
         "width": 1100,
-        "height": 750
+        "height": 750,
+        "dragDropEnabled": true
       }
     ],
     "security": {
