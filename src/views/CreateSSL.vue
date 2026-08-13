@@ -6,7 +6,7 @@ import { readTextFile } from '@tauri-apps/plugin-fs';
 import { ElMessage } from 'element-plus';
 import CertInfoDisplay from '../components/CertInfoDisplay.vue';
 import SANEditor from '../components/SANEditor.vue';
-import type { SslParams, CertInfo, SubjectInfo, SanEntry } from '../types';
+import type { SslParams, CertInfo, SanEntry } from '../types';
 import { KeyAlgorithm } from '../types';
 
 const generating = ref(false);

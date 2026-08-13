@@ -3,7 +3,7 @@ import { ref, reactive } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { ElMessage } from 'element-plus';
 import CertInfoDisplay from '../components/CertInfoDisplay.vue';
-import type { CaParams, CertInfo, SubjectInfo } from '../types';
+import type { CaParams, CertInfo } from '../types';
 import { KeyAlgorithm } from '../types';
 
 const generating = ref(false);

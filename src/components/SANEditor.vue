@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { ElMessage } from 'element-plus';
 import type { SanEntry } from '../types';
 
 const emit = defineEmits<{
@@ -64,7 +63,7 @@ function onIpInput() {
   <div class="san-editor">
     <div class="san-section">
       <div class="san-section-label">DNS 名称</div>
-      <div v-for="(dns, index) in dnsNames" :key="'dns-' + index" class="san-row">
+      <div v-for="(_dns, index) in dnsNames" :key="'dns-' + index" class="san-row">
         <el-input
           v-model="dnsNames[index]"
           placeholder="例如: example.com"
