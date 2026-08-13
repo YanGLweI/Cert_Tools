@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router';
+import { Lock, Connection } from '@element-plus/icons-vue';
 
 const router = useRouter();
 const route = useRoute();
 
 const menuItems = [
-  { path: '/create-ca', name: '创建 CA 证书', icon: 'Lock' },
-  { path: '/create-ssl', name: '创建 SSL 证书', icon: 'Connection' },
+  { path: '/create-ca', name: '创建 CA 证书', iconComponent: Lock },
+  { path: '/create-ssl', name: '创建 SSL 证书', iconComponent: Connection },
 ];
 
 function navigate(path: string) {
@@ -31,8 +32,8 @@ function navigate(path: string) {
           :key="item.path"
           :index="item.path"
         >
-          <el-icon class="icon">
-            <component :is="item.icon" />
+          <el-icon :size="18">
+            <component :is="item.iconComponent" />
           </el-icon>
           <span>{{ item.name }}</span>
         </el-menu-item>

@@ -99,18 +99,18 @@ html.dark {
 }
 
 .page-header {
-  padding: 20px 32px 0;
+  padding: 16px 24px 0;
 }
 
 .page-header h2 {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--color-foreground);
 }
 
 .page-content {
   flex: 1;
-  padding: 20px 32px 32px;
+  padding: 16px 24px 24px;
   overflow-y: auto;
 }
 
@@ -118,17 +118,17 @@ html.dark {
   background-color: var(--color-muted);
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  padding: 24px;
-  margin-bottom: 20px;
+  padding: 20px;
+  margin-bottom: 16px;
 }
 
 .form-card-title {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--color-accent);
-  margin-bottom: 16px;
+  margin-bottom: 14px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
 }
 
 /* Scrollbar styling */
@@ -158,10 +158,17 @@ html.dark {
 .el-menu-item {
   color: #94A8B8 !important;
   font-size: 13px !important;
-  height: 44px !important;
-  line-height: 44px !important;
+  height: 40px !important;
+  line-height: 40px !important;
   margin: 2px 8px !important;
   border-radius: 6px !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.el-menu-item .el-icon {
+  margin-right: 8px;
+  flex-shrink: 0;
 }
 
 .el-menu-item.is-active {
@@ -171,11 +178,6 @@ html.dark {
 
 .el-menu-item:hover {
   background-color: rgba(255, 255, 255, 0.05) !important;
-}
-
-.el-menu-item .icon {
-  margin-right: 10px;
-  font-size: 16px;
 }
 
 /* Form styling */
@@ -279,9 +281,9 @@ html.dark {
 
 /* File upload area */
 .upload-zone {
-  border: 2px dashed var(--color-border);
+  border: 1.5px dashed var(--color-border);
   border-radius: 8px;
-  padding: 32px;
+  padding: 24px 16px;
   text-align: center;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -293,7 +295,12 @@ html.dark {
 }
 
 .upload-zone .icon {
-  font-size: 32px;
+  font-size: 14px;
+  color: var(--color-accent);
+  margin-bottom: 4px;
+}
+.upload-zone .el-icon {
+  font-size: 28px;
   color: var(--color-accent);
   margin-bottom: 8px;
 }
