@@ -6,17 +6,174 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CertTools - 自签证书生成工具</title>
     <style>
+      /* === Reset === */
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+
       html, body, #app {
-        margin: 0;
-        padding: 0;
-        height: 100%;
-        width: 100%;
+        height: 100%; width: 100%;
         background-color: #0F172A;
+        font-family: 'JetBrains Mono', monospace;
+        overflow: hidden;
       }
+
+      /* === Skeleton Layout === */
+      .sk-root {
+        display: flex;
+        height: 100vh; width: 100vw;
+      }
+
+      /* --- Sidebar --- */
+      .sk-sidebar {
+        width: 240px; min-width: 240px;
+        background-color: #1E293B;
+        border-right: 1px solid #475569;
+        display: flex; flex-direction: column;
+      }
+      .sk-sidebar .sk-brand {
+        padding: 24px 20px 20px;
+        border-bottom: 1px solid #475569;
+      }
+      .sk-sidebar .sk-brand .sk-line {
+        height: 16px; width: 100px; border-radius: 4px;
+        background: #334155;
+      }
+      .sk-sidebar .sk-brand .sk-line-sm {
+        height: 11px; width: 140px; border-radius: 3px;
+        background: #334155; margin-top: 8px;
+      }
+      .sk-sidebar .sk-nav {
+        padding: 12px 8px; display: flex; flex-direction: column; gap: 4px;
+      }
+      .sk-sidebar .sk-nav-item {
+        display: flex; align-items: center; gap: 10px;
+        padding: 0 12px; height: 40px; border-radius: 6px;
+        background: #272F42;
+      }
+      .sk-sidebar .sk-nav-item .sk-icon {
+        width: 18px; height: 18px; border-radius: 4px;
+        background: #334155; flex-shrink: 0;
+      }
+      .sk-sidebar .sk-nav-item .sk-label {
+        height: 12px; flex: 1; border-radius: 3px;
+        background: #334155;
+      }
+
+      /* --- Main Area --- */
+      .sk-main {
+        flex: 1; display: flex; flex-direction: column;
+        background-color: #0F172A; padding: 20px 24px;
+        overflow: hidden;
+      }
+      .sk-main .sk-header {
+        height: 18px; width: 200px; border-radius: 4px;
+        background: #272F42; margin-bottom: 20px;
+      }
+
+      .sk-main .sk-card {
+        background: #272F42; border: 1px solid #475569;
+        border-radius: 8px; padding: 20px;
+        margin-bottom: 16px;
+      }
+      .sk-main .sk-card:first-of-type { min-height: 180px; }
+      .sk-main .sk-card:last-of-type  { flex: 1; min-height: 260px; }
+
+      .sk-main .sk-card-title {
+        height: 12px; width: 120px; border-radius: 3px;
+        background: #334155; margin-bottom: 16px;
+      }
+      .sk-main .sk-field {
+        height: 36px; border-radius: 6px;
+        background: #1E293B; margin-bottom: 14px;
+        border: 1px solid #475569;
+      }
+      .sk-main .sk-field:last-child { margin-bottom: 0; }
+      .sk-main .sk-field.w-60  { width: 60%; }
+      .sk-main .sk-field.w-80  { width: 80%; }
+      .sk-main .sk-field.w-40  { width: 40%; }
+      .sk-main .sk-field.w-100 { width: 100%; }
+
+      .sk-card-grid {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+      }
+
+      /* --- Shimmer animation --- */
+      .sk-line, .sk-line-sm, .sk-icon, .sk-label, .sk-header,
+      .sk-card-title, .sk-field, .sk-nav-item {
+        position: relative;
+        overflow: hidden;
+      }
+      .sk-line::after, .sk-line-sm::after, .sk-icon::after, .sk-label::after,
+      .sk-header::after, .sk-card-title::after, .sk-field::after,
+      .sk-nav-item::after {
+        content: '';
+        position: absolute; inset: 0;
+        background: linear-gradient(
+          90deg,
+          transparent 0%,
+          rgba(255,255,255,0.04) 50%,
+          transparent 100%
+        );
+        background-size: 200% 100%;
+        animation: shimmer 1.8s ease-in-out infinite;
+      }
+      @keyframes shimmer {
+        0%   { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+      }
+
+      /* Hide skeleton once Vue mounts */
+      #app:not(:empty) .sk-root { display: none; }
     </style>
   </head>
   <body style="background-color: #0F172A;">
-    <div id="app"></div>
+    <div id="app">
+      <div class="sk-root">
+        <!-- Sidebar -->
+        <aside class="sk-sidebar">
+          <div class="sk-brand">
+            <div class="sk-line"></div>
+            <div class="sk-line-sm"></div>
+          </div>
+          <nav class="sk-nav">
+            <div class="sk-nav-item">
+              <div class="sk-icon"></div>
+              <div class="sk-label"></div>
+            </div>
+            <div class="sk-nav-item">
+              <div class="sk-icon"></div>
+              <div class="sk-label"></div>
+            </div>
+          </nav>
+        </aside>
+
+        <!-- Main content -->
+        <main class="sk-main">
+          <div class="sk-header"></div>
+
+          <div class="sk-card">
+            <div class="sk-card-title"></div>
+            <div class="sk-card-grid">
+              <div>
+                <div class="sk-field w-100"></div>
+                <div class="sk-field w-100"></div>
+              </div>
+              <div>
+                <div class="sk-field w-100"></div>
+                <div class="sk-field w-100"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sk-card">
+            <div class="sk-card-title"></div>
+            <div class="sk-field w-100"></div>
+            <div class="sk-field w-80"></div>
+            <div class="sk-field w-60"></div>
+            <div class="sk-field w-40"></div>
+          </div>
+        </main>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
