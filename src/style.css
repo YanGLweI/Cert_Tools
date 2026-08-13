@@ -294,6 +294,13 @@ html.dark {
   background-color: rgba(34, 197, 94, 0.05);
 }
 
+.upload-zone.drag-over {
+  border-color: var(--color-accent);
+  background-color: rgba(34, 197, 94, 0.12);
+  border-style: solid;
+  transform: scale(1.02);
+}
+
 .upload-zone .icon {
   font-size: 14px;
   color: var(--color-accent);

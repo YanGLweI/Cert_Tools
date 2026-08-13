@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive } from 'vue';
+import { ref, reactive, onMounted, onBeforeUnmount } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readTextFile } from '@tauri-apps/plugin-fs';
@@ -16,6 +16,10 @@ const result = ref<CertInfo | null>(null);
 const caCertPem = ref('');
 const caKeyPem = ref('');
 const caInfo = ref<CertInfo | null>(null);
+
+// Drag state
+const dragOverCert = ref(false);
+const dragOverKey = ref(false);
 
 const form = reactive<SslParams>({
   subject: {
@@ -37,6 +41,88 @@ const formRules = {
 };
 
 const formRef = ref();
+
+// Prevent browser from opening dropped files
+function preventGlobalDrop(e: DragEvent) {
+  e.preventDefault();
+}
+
+onMounted(() => {
+  document.addEventListener('dragover', preventGlobalDrop);
+  document.addEventListener('drop', preventGlobalDrop);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('dragover', preventGlobalDrop);
+  document.removeEventListener('drop', preventGlobalDrop);
+});
+
+function isCertFile(name: string): boolean {
+  const lower = name.toLowerCase();
+  return lower.endsWith('.crt') || lower.endsWith('.pem') || lower.endsWith('.cer');
+}
+
+function isKeyFile(name: string): boolean {
+  const lower = name.toLowerCase();
+  return lower.endsWith('.key') || lower.endsWith('.pem');
+}
+
+function readDroppedFile(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file);
+  });
+}
+
+async function handleDropCert(event: DragEvent) {
+  dragOverCert.value = false;
+  const file = event.dataTransfer?.files?.[0];
+  if (!file) return;
+
+  const name = file.name.toLowerCase();
+  if (!name.endsWith('.crt') && !name.endsWith('.pem') && !name.endsWith('.cer') && !name.endsWith('.key')) {
+    ElMessage.warning('请拖入证书或私钥文件 (.crt / .pem / .cer / .key)');
+    return;
+  }
+
+  try {
+    const content = await readDroppedFile(file);
+    const isCert = isCertFile(name) || (!isKeyFile(name) && content.includes('BEGIN CERTIFICATE'));
+    if (isCert) {
+      const info = await invoke<CertInfo>('parse_certificate', { certPem: content });
+      caCertPem.value = content;
+      caInfo.value = info;
+      ElMessage.success('CA 证书导入成功');
+    } else {
+      caKeyPem.value = content;
+      ElMessage.success('CA 私钥导入成功');
+    }
+  } catch (e) {
+    ElMessage.error('文件读取失败: ' + String(e));
+  }
+}
+
+async function handleDropKey(event: DragEvent) {
+  dragOverKey.value = false;
+  const file = event.dataTransfer?.files?.[0];
+  if (!file) return;
+
+  const name = file.name.toLowerCase();
+  if (!name.endsWith('.key') && !name.endsWith('.pem')) {
+    ElMessage.warning('请拖入私钥文件 (.key / .pem)');
+    return;
+  }
+
+  try {
+    const content = await readDroppedFile(file);
+    caKeyPem.value = content;
+    ElMessage.success('CA 私钥导入成功');
+  } catch (e) {
+    ElMessage.error('文件读取失败: ' + String(e));
+  }
+}
 
 async function importCaCert() {
   try {
@@ -121,15 +207,29 @@ function clearCa() {
       <div class="form-card-title">CA 证书导入</div>
 
       <div v-if="!caInfo" class="upload-row">
-        <div class="upload-zone" @click="importCaCert">
-          <el-icon class="icon"><Upload /></el-icon>
-          <div class="text">点击导入 CA 证书文件 (.crt / .pem)</div>
-          <div class="hint">CA 证书用于签发 SSL 证书</div>
+        <div
+          class="upload-zone"
+          :class="{ 'drag-over': dragOverCert }"
+          @click="importCaCert"
+          @dragover.prevent="dragOverCert = true"
+          @dragleave.prevent="dragOverCert = false"
+          @drop.prevent="handleDropCert"
+        >
+          <el-icon><UploadFilled /></el-icon>
+          <div class="text">点击或拖动 CA 证书文件到此处</div>
+          <div class="hint">支持 .crt / .pem / .cer 格式</div>
         </div>
-        <div class="upload-zone" @click="importCaKey">
-          <el-icon class="icon"><Key /></el-icon>
-          <div class="text">点击导入 CA 私钥文件 (.key)</div>
-          <div class="hint">与 CA 证书配对的私钥</div>
+        <div
+          class="upload-zone"
+          :class="{ 'drag-over': dragOverKey }"
+          @click="importCaKey"
+          @dragover.prevent="dragOverKey = true"
+          @dragleave.prevent="dragOverKey = false"
+          @drop.prevent="handleDropKey"
+        >
+          <el-icon><Key /></el-icon>
+          <div class="text">点击或拖动 CA 私钥文件到此处</div>
+          <div class="hint">支持 .key / .pem 格式</div>
         </div>
       </div>
 
@@ -142,10 +242,12 @@ function clearCa() {
           <div><strong>Subject:</strong> {{ caInfo.subject }}</div>
           <div v-if="caKeyPem"><strong>Private Key:</strong> 已导入</div>
         </div>
-        <el-button size="small" @click="clearCa">
-          <el-icon><Refresh /></el-icon>
-          重新导入
-        </el-button>
+        <div class="ca-ready-actions">
+          <el-button size="small" @click="clearCa">
+            <el-icon><Refresh /></el-icon>
+            重新导入
+          </el-button>
+        </div>
       </div>
     </div>
 
@@ -249,6 +351,11 @@ function clearCa() {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.ca-ready-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .ca-info-summary {
