@@ -59,7 +59,10 @@ onMounted(async () => {
     } else if (type === 'leave') {
       dragOverCert.value = false;
       dragOverKey.value = false;
-    } else if (type === 'enter' || type === 'drop') {
+    } else if (type === 'enter') {
+      dragOverCert.value = false;
+      dragOverKey.value = false;
+    } else if (type === 'drop') {
       dragOverCert.value = false;
       dragOverKey.value = false;
 
