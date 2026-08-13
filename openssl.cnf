@@ -1,0 +1,55 @@
+# OpenSSL CA 配置文件
+# 用途：本地内部 CA，为 hot-sftp.it.local 签发带 SAN 的 TLS 服务器证书
+# 用法：配合 generate.sh 使用
+
+[ ca ]
+default_ca = CA_default
+
+[ CA_default ]
+dir               = .
+database          = $dir/index.txt
+new_certs_dir     = $dir/newcerts
+certificate       = $dir/certs/ca.crt
+private_key       = $dir/private/ca.key
+serial            = $dir/serial
+default_md        = sha256
+default_days      = 730
+policy            = policy_match
+unique_subject    = no
+
+[ policy_match ]
+countryName            = match
+organizationName       = match
+organizationalUnitName = optional
+commonName             = supplied
+
+[ req ]
+default_bits       = 2048
+distinguished_name = req_distinguished_name
+req_extensions     = v3_req
+prompt             = no
+
+[ req_distinguished_name ]
+C  = CN
+O  = IT
+OU = SFTP
+CN = hot-sftp.it.local
+
+# CSR 扩展（提交外部 CA 时同样携带 SAN）
+[ v3_req ]
+subjectAltName = DNS:hot-sftp.it.local, IP:10.61.254.188
+
+# 根 CA 证书扩展
+[ v3_ca ]
+basicConstraints = critical, CA:TRUE, pathlen:0
+keyUsage         = critical, keyCertSign, cRLSign
+subjectKeyIdentifier = hash
+
+# 服务器证书扩展（SAN 直接写死，不依赖 copy_extensions）
+[ v3_server ]
+basicConstraints = critical, CA:FALSE
+keyUsage         = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid, issuer
+subjectAltName = DNS:hot-sftp.it.local, IP:10.61.254.188

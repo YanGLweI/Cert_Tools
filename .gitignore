@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+*.log
+.env
+.env.local
+src-tauri/target/
+.DS_Store
+Thumbs.db
+*.key
+*.old
+index.txt
+index.txt.*
+serial
+serial.*
+newcerts/
