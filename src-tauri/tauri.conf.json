@@ -40,6 +40,9 @@
         "languages": ["SimpChinese", "English"],
         "displayLanguageSelector": true
       }
+    },
+    "macOS": {
+      "signingIdentity": "-"
     }
   }
 }
