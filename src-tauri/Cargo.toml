@@ -1,6 +1,6 @@
 [package]
 name = "cert-tools"
-version = "0.1.0"
+version = "1.0.1"
 description = "自签证书生成工具"
 authors = ["Yeunglw"]
 edition = "2021"
