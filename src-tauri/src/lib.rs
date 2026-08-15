@@ -1,6 +1,6 @@
 mod certgen;
 
-use certgen::{CaParams, CertInfo, SslParams};
+use certgen::{CaParams, DomainCertParams, CertInfo, DomainCertResult, SslParams};
 
 #[tauri::command]
 fn generate_ca(params: CaParams) -> Result<CertInfo, String> {
@@ -17,6 +17,11 @@ fn parse_certificate(cert_pem: String) -> Result<CertInfo, String> {
     certgen::parse_certificate(&cert_pem)
 }
 
+#[tauri::command]
+fn generate_domain_certificate(params: DomainCertParams, pfx_password: String) -> Result<DomainCertResult, String> {
+    certgen::generate_domain_certificate(&params, &pfx_password)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -27,6 +32,7 @@ pub fn run() {
             generate_ca,
             generate_ssl,
             parse_certificate,
+            generate_domain_certificate,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import CreateCA from '../views/CreateCA.vue';
 import CreateSSL from '../views/CreateSSL.vue';
+import CreateDomainCert from '../views/CreateDomainCert.vue';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -20,6 +21,12 @@ const router = createRouter({
       name: 'CreateSSL',
       component: CreateSSL,
       meta: { title: '创建 SSL 证书' },
+    },
+    {
+      path: '/domain-cert',
+      name: 'DomainCert',
+      component: CreateDomainCert,
+      meta: { title: 'Windows 域控证书' },
     },
   ],
 });

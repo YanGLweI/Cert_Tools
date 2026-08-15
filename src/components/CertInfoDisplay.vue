@@ -121,6 +121,8 @@ function formatDate(dateStr: string): string {
         保存完整链
       </el-button>
     </div>
+
+    <slot name="actions" />
   </div>
 </template>
 

@@ -43,3 +43,9 @@ export interface CertInfo {
   key_algorithm: string;
   san: string[] | null;
 }
+
+export interface DomainCertResult {
+  cert_info: CertInfo;      // 证书信息的嵌套对象
+  pfx_buffer: number[];     // 二进制 PFX 数据（由 Vec<u8> 序列化）
+  ca_cert_pem: string;     // 独立的 CA.crt 内容
+}

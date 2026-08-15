@@ -6,6 +6,7 @@ use openssl::{
     hash::MessageDigest,
     nid::Nid,
     pkey::{PKey, Private},
+    pkcs12::Pkcs12,
     rsa::Rsa,
     sha::{sha1, sha256},
     x509::{
@@ -68,6 +69,21 @@ pub struct CertInfo {
     pub sha1_fingerprint: String,
     pub key_algorithm: String,
     pub san: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DomainCertParams {
+    pub subject: SubjectInfo,
+    pub san: SanEntry,
+    pub key_algorithm: KeyAlgorithm,
+    pub validity_days: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DomainCertResult {
+    pub cert_info: CertInfo,
+    pub pfx_buffer: Vec<u8>,
+    pub ca_cert_pem: String,
 }
 
 fn algorithm_name(alg: &KeyAlgorithm) -> String {
@@ -460,9 +476,9 @@ pub fn generate_ssl(
 /// Parse a PEM certificate and return its info (for import preview)
 pub fn parse_certificate(cert_pem: &str) -> Result<CertInfo, String> {
     let cert = X509::from_pem(cert_pem.as_bytes())
-        .map_err(|e| format!("证书解析失败: {}", e))?;
+        .map_err(|e| format!("证书解析失败：{}", e))?;
 
-    let der = cert.to_der().map_err(|e| format!("DER 编码失败: {}", e))?;
+    let der = cert.to_der().map_err(|e| format!("DER 编码失败：{}", e))?;
     let sha256_fp = compute_sha256_fingerprint(&der);
     let sha1_fp = compute_sha1_fingerprint(&der);
 
@@ -480,5 +496,263 @@ pub fn parse_certificate(cert_pem: &str) -> Result<CertInfo, String> {
         sha1_fingerprint: sha1_fp,
         key_algorithm: String::new(),
         san: None,
+    })
+}
+
+/// Generate domain certificate with PFX bundle for Windows Active Directory
+pub fn generate_domain_certificate(params: &DomainCertParams, pfx_password: &str) -> Result<DomainCertResult, String> {
+    // Step 1: Generate CA key and self-signed root CA certificate
+    let ca_key_pair = generate_pkey(&params.key_algorithm)?;
+    let ca_subject_name = build_subject_name(&params.subject)?;
+
+    let mut ca_builder = X509Builder::new()
+        .map_err(|e| format!("X509Builder 创建失败：{}", e))?;
+
+    ca_builder
+        .set_version(2)
+        .map_err(|e| format!("设置版本失败：{}", e))?;
+
+    let (ca_bn, _serial_hex) = generate_serial()?;
+    let ca_asn1_int = ca_bn
+        .to_asn1_integer()
+        .map_err(|e| format!("序列号转换失败：{}", e))?;
+    ca_builder
+        .set_serial_number(&ca_asn1_int)
+        .map_err(|e| format!("设置序列号失败：{}", e))?;
+
+    ca_builder
+        .set_subject_name(&ca_subject_name)
+        .map_err(|e| format!("设置主题失败：{}", e))?;
+    ca_builder
+        .set_issuer_name(&ca_subject_name)
+        .map_err(|e| format!("设置签发者失败：{}", e))?;
+
+    let ca_not_before = Asn1Time::days_from_now(0)
+        .map_err(|e| format!("设置生效时间失败：{}", e))?;
+    let ca_not_after = Asn1Time::days_from_now(params.validity_days as u32)
+        .map_err(|e| format!("设置过期时间失败：{}", e))?;
+    ca_builder
+        .set_not_before(&ca_not_before)
+        .map_err(|e| format!("设置 not_before 失败：{}", e))?;
+    ca_builder
+        .set_not_after(&ca_not_after)
+        .map_err(|e| format!("设置 not_after 失败：{}", e))?;
+
+    ca_builder
+        .set_pubkey(&ca_key_pair)
+        .map_err(|e| format!("设置公钥失败：{}", e))?;
+
+    // Basic Constraints: CA:TRUE
+    let ca_bc = BasicConstraints::new()
+        .ca()
+        .build()
+        .map_err(|e| format!("BasicConstraints 构建失败：{}", e))?;
+    ca_builder
+        .append_extension(ca_bc)
+        .map_err(|e| format!("添加 BasicConstraints 失败：{}", e))?;
+
+    // Key Usage: keyCertSign, cRLSign
+    let ca_ku = KeyUsage::new()
+        .key_cert_sign()
+        .crl_sign()
+        .build()
+        .map_err(|e| format!("KeyUsage 构建失败：{}", e))?;
+    ca_builder
+        .append_extension(ca_ku)
+        .map_err(|e| format!("添加 KeyUsage 失败：{}", e))?;
+
+    // Subject Key Identifier
+    let ca_ctx = ca_builder.x509v3_context(None, None);
+    let ca_ski = SubjectKeyIdentifier::new()
+        .build(&ca_ctx)
+        .map_err(|e| format!("SubjectKeyIdentifier 构建失败：{}", e))?;
+    ca_builder
+        .append_extension(ca_ski)
+        .map_err(|e| format!("添加 SubjectKeyIdentifier 失败：{}", e))?;
+
+    ca_builder
+        .sign(&ca_key_pair, MessageDigest::sha256())
+        .map_err(|e| format!("CA 证书签名失败：{}", e))?;
+
+    let ca_cert = ca_builder.build();
+    let ca_cert_pem = String::from_utf8(
+        ca_cert
+            .to_pem()
+            .map_err(|e| format!("CA 证书 PEM 编码失败：{}", e))?,
+    )
+    .map_err(|e| format!("UTF-8 转换失败：{}", e))?;
+
+    // Step 2: Generate server key and CSR
+    let server_key_pair = generate_pkey(&params.key_algorithm)?;
+    let server_subject_name = build_subject_name(&params.subject)?;
+
+    let mut server_builder = X509Builder::new()
+        .map_err(|e| format!("X509Builder 创建失败：{}", e))?;
+
+    server_builder
+        .set_version(2)
+        .map_err(|e| format!("设置版本失败：{}", e))?;
+
+    let (server_bn, serial_hex) = generate_serial()?;
+    let server_asn1_int = server_bn
+        .to_asn1_integer()
+        .map_err(|e| format!("序列号转换失败：{}", e))?;
+    server_builder
+        .set_serial_number(&server_asn1_int)
+        .map_err(|e| format!("设置序列号失败：{}", e))?;
+
+    server_builder
+        .set_subject_name(&server_subject_name)
+        .map_err(|e| format!("设置主题失败：{}", e))?;
+    server_builder
+        .set_issuer_name(ca_cert.subject_name())
+        .map_err(|e| format!("设置签发者失败：{}", e))?;
+
+    let server_not_before = Asn1Time::days_from_now(0)
+        .map_err(|e| format!("设置生效时间失败：{}", e))?;
+    let server_not_after = Asn1Time::days_from_now(params.validity_days as u32)
+        .map_err(|e| format!("设置过期时间失败：{}", e))?;
+    server_builder
+        .set_not_before(&server_not_before)
+        .map_err(|e| format!("设置 not_before 失败：{}", e))?;
+    server_builder
+        .set_not_after(&server_not_after)
+        .map_err(|e| format!("设置 not_after 失败：{}", e))?;
+
+    server_builder
+        .set_pubkey(&server_key_pair)
+        .map_err(|e| format!("设置公钥失败：{}", e))?;
+
+    // Basic Constraints: CA:FALSE
+    let server_bc = BasicConstraints::new()
+        .build()
+        .map_err(|e| format!("BasicConstraints 构建失败：{}", e))?;
+    server_builder
+        .append_extension(server_bc)
+        .map_err(|e| format!("添加 BasicConstraints 失败：{}", e))?;
+
+    // Key Usage: digitalSignature, keyEncipherment
+    let server_ku = KeyUsage::new()
+        .digital_signature()
+        .key_encipherment()
+        .build()
+        .map_err(|e| format!("KeyUsage 构建失败：{}", e))?;
+    server_builder
+        .append_extension(server_ku)
+        .map_err(|e| format!("添加 KeyUsage 失败：{}", e))?;
+
+    // Extended Key Usage: serverAuth
+    let server_eku = ExtendedKeyUsage::new()
+        .server_auth()
+        .build()
+        .map_err(|e| format!("ExtendedKeyUsage 构建失败：{}", e))?;
+    server_builder
+        .append_extension(server_eku)
+        .map_err(|e| format!("添加 ExtendedKeyUsage 失败：{}", e))?;
+
+    // Subject Alternative Name
+    let server_ctx = server_builder.x509v3_context(Some(&ca_cert), None);
+    let mut san_builder = SubjectAlternativeName::new();
+    for dns in &params.san.dns_names {
+        if !dns.is_empty() {
+            san_builder.dns(dns);
+        }
+    }
+    for ip in &params.san.ip_addresses {
+        if !ip.is_empty() {
+            san_builder.ip(ip);
+        }
+    }
+    let san_ext = san_builder
+        .build(&server_ctx)
+        .map_err(|e| format!("SAN 构建失败：{}", e))?;
+    server_builder
+        .append_extension(san_ext)
+        .map_err(|e| format!("添加 SAN 失败：{}", e))?;
+
+    // Authority Key Identifier
+    let aki_ctx = server_builder.x509v3_context(Some(&ca_cert), None);
+    let aki = AuthorityKeyIdentifier::new()
+        .keyid(true)
+        .build(&aki_ctx)
+        .map_err(|e| format!("AuthorityKeyIdentifier 构建失败：{}", e))?;
+    server_builder
+        .append_extension(aki)
+        .map_err(|e| format!("添加 AuthorityKeyIdentifier 失败：{}", e))?;
+
+    server_builder
+        .sign(&ca_key_pair, MessageDigest::sha256())
+        .map_err(|e| format!("SSL 证书签名失败：{}", e))?;
+
+    let server_cert = server_builder.build();
+    let server_cert_pem = String::from_utf8(
+        server_cert
+            .to_pem()
+            .map_err(|e| format!("PEM 编码失败：{}", e))?,
+    )
+    .map_err(|e| format!("UTF-8 转换失败：{}", e))?;
+    let server_cert_der = server_cert
+        .to_der()
+        .map_err(|e| format!("DER 编码失败：{}", e))?;
+    let server_key_pem = String::from_utf8(
+        server_key_pair
+            .private_key_to_pem_pkcs8()
+            .map_err(|e| format!("私钥 PEM 编码失败：{}", e))?,
+    )
+    .map_err(|e| format!("UTF-8 转换失败：{}", e))?;
+
+    // Step 3: Create PFX bundle
+    use openssl::stack::Stack;
+    
+    let mut ca_stack = Stack::new().map_err(|e| format!("CA 堆栈创建失败：{}", e))?;
+    ca_stack.push(ca_cert.clone()).map_err(|e| format!("CA 证书添加失败：{}", e))?;
+    
+    let pfx = Pkcs12::builder()
+        .name(&params.subject.common_name)
+        .pkey(&server_key_pair)
+        .cert(&server_cert)
+        .ca(ca_stack)
+        .build2(pfx_password)
+        .map_err(|e| format!("PFX 打包失败：{}", e))?;
+
+    let pfx_buffer = pfx
+        .to_der()
+        .map_err(|e| format!("PFX DER 编码失败：{}", e))?;
+
+    // Build CertInfo
+    let subject_str = subject_to_string(&params.subject);
+    let alg_name = algorithm_name(&params.key_algorithm);
+    let sha256_fp = compute_sha256_fingerprint(&server_cert_der);
+    let sha1_fp = compute_sha1_fingerprint(&server_cert_der);
+    let mut san_names = Vec::new();
+    for dns in &params.san.dns_names {
+        if !dns.is_empty() {
+            san_names.push(dns.clone());
+        }
+    }
+    for ip in &params.san.ip_addresses {
+        if !ip.is_empty() {
+            san_names.push(format!("IP:{}", ip));
+        }
+    }
+
+    let cert_info = CertInfo {
+        cert_pem: server_cert_pem,
+        key_pem: server_key_pem,
+        subject: subject_str,
+        issuer: Some(x509_name_to_string(ca_cert.subject_name())),
+        serial_number: serial_hex,
+        valid_from: format_utc_now(),
+        valid_to: format_utc_after(params.validity_days),
+        sha256_fingerprint: sha256_fp,
+        sha1_fingerprint: sha1_fp,
+        key_algorithm: alg_name,
+        san: Some(san_names),
+    };
+
+    Ok(DomainCertResult {
+        cert_info,
+        pfx_buffer,
+        ca_cert_pem,
     })
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router';
-import { Lock, Connection } from '@element-plus/icons-vue';
+import { Lock, Connection, Monitor } from '@element-plus/icons-vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -8,6 +8,7 @@ const route = useRoute();
 const menuItems = [
   { path: '/create-ca', name: '创建 CA 证书', iconComponent: Lock },
   { path: '/create-ssl', name: '创建 SSL 证书', iconComponent: Connection },
+  { path: '/domain-cert', name: 'Windows 域控证书', iconComponent: Monitor },
 ];
 
 function navigate(path: string) {
