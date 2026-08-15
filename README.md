@@ -1,6 +1,6 @@
 # CertTools - 自签证书生成工具
 
-CertTools 是一款基于 Tauri 2.0 的跨平台自签证书生成桌面工具，提供 **创建 CA 证书** 和 **创建 SSL 证书** 两大功能模块，帮助开发者和运维人员快速生成内部使用的 TLS 证书。
+CertTools 是一款基于 Tauri 2.0 的跨平台自签证书生成桌面工具，提供 **创建 CA 证书**、**创建 SSL 证书** 和 **Windows 域控证书生成** 三大功能模块，帮助开发者和运维人员快速生成内部使用的 TLS 证书。
 
 ![dark theme](https://img.shields.io/badge/theme-dark_oled-0F172A)
 ![tauri](https://img.shields.io/badge/tauri-2.0-24C8DB)
@@ -19,6 +19,12 @@ CertTools 是一款基于 Tauri 2.0 的跨平台自签证书生成桌面工具�
   - 支持 Subject Alternative Names (SAN) 编辑：DNS 名称和 IP 地址动态增删
   - 自动附加 serverAuth 扩展和 authorityKeyIdentifier
   - 一键保存证书 / 私钥 / 完整链（cert + CA 拼接）
+
+- **Windows 域控证书生成** ⭐️
+  - 自动生成 CA 私钥、自签名根证书
+  - 生成服务器私钥和 CSR，使用 CA 签发带 SAN 扩展的服务器证书
+  - 打包为 PFX 文件（包含私钥、服务器证书和 CA 证书），支持自定义密码保护
+  - 提供独立的 CA.crt，用于 LDAPS 信任链配置
 
 - **证书信息展示**
   - 主题、签发者、序列号、有效期
@@ -52,7 +58,8 @@ CertTools/
 │   ├── router/                 # 路由配置
 │   ├── views/
 │   │   ├── CreateCA.vue        # 创建 CA 证书
-│   │   └── CreateSSL.vue       # 创建 SSL 证书
+│   │   ├── CreateSSL.vue       # 创建 SSL 证书
+│   │   └── CreateDomainCert.vue # Windows 域控证书生成
 │   ├── components/
 │   │   ├── CertInfoDisplay.vue # 证书信息面板
 │   │   └── SANEditor.vue       # SAN 条目编辑器
@@ -96,12 +103,13 @@ PKG_CONFIG_ALLOW_CROSS=1 npx tauri build --target x86_64-pc-windows-gnu
 
 ### 安装
 
-从 [GitHub Releases](https://github.com/YanGLweI/Cert_Tools/releases) 下载对应平台的安装包：
+从 [GitHub Releases](https://github.com/YanGLweI/Cert_Tools/releases) 下载对应平台的安装包（v1.0.1+）：
 
-| 平台 | 文件 |
-|------|------|
-| Windows x64 | `CertTools_x.x.x_x64-setup.exe`（NSIS 安装包） |
-| macOS | `CertTools_x.x.x_aarch64.dmg` |
+| 版本 | 平台 | 文件 |
+|------|------|------|
+| **v1.0.1** | Windows x64 | `CertTools_1.0.1_x64-setup.exe`（NSIS 安装包） |
+| **v1.0.1** | macOS Apple Silicon | `CertTools_1.0.1_aarch64.dmg`（ad-hoc 签名，未公证；其他 Mac 首次打开被拦截时右键 → 打开，或执行 `xattr -dr com.apple.quarantine`） |
+| v0.1.0 | Windows x64 | `CertTools_0.1.0_x64-setup.exe`（历史版本，含基础 CA/SSL 生成功能） |
 
 ## 使用指南
 
@@ -125,7 +133,21 @@ PKG_CONFIG_ALLOW_CROSS=1 npx tauri build --target x86_64-pc-windows-gnu
 
 > **注意**：CA 证书和私钥都必须导入，私钥用于签名，证书用于嵌入签发者信息。
 
-### 3. 部署证书
+> **注意**：CA 证书和私钥都必须导入，私钥用于签名，证书用于嵌入签发者信息。
+
+### 3. Windows 域控证书生成 ⭐️
+
+1. 进入「Windows 域控证书生成」页面
+2. 填写 CA 主题信息（CN、O、OU、C）
+3. 为 PFX 设置密码保护（可选）
+4. 点击「生成域控证书」
+5. 结果展示后分别下载：
+   - `domain-cert.pfx`：包含私钥、服务器证书和 CA 证书的 PFX 包（需密码解锁）
+   - `CA.crt`：独立 CA 证书（用于 LDAPS 等场景的信任链配置）
+
+> PFX 包适用于 Windows Active Directory 集成，CA.crt 可单独用于 LDAPS、OpenLDAP 等服务信任链验证。
+
+### 4. 部署证书
 
 生成的证书文件可直接用于各类服务：
 
