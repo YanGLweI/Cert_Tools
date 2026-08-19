@@ -74,6 +74,17 @@ CertTools/
 └── index.html                  # 入口（含骨架屏）
 ```
 
+## 界面预览
+
+### 1. 创建 CA 证书
+![CA Certificate](assets/screenshot-ca.png)
+
+### 2. 创建 SSL 证书
+![SSL Certificate](assets/screenshot-ssl.png)
+
+### 3. Windows 域控证书
+![Windows Domain Certificate](assets/screenshot-domain.png)
+
 ## 快速开始
 
 ### 环境要求
